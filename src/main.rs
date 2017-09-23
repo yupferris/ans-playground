@@ -30,9 +30,16 @@ fn main() {
     println!("L: {}", L);
 
     // Scaled integer probabilities (must sum to L)
+    //  Note that in very extreme cases (eg. a symbol has ~0 probability) this algorithm might fail. :)
     let mut scaled_symbol_probabilities =
         symbol_probabilities.iter()
-        .map(|p| (*p * (L as f64)).floor() as u32)
+        .map(|p| {
+            let mut ret = (*p * (L as f64)).floor() as u32;
+            if ret < 1 {
+                ret = 1;
+            }
+            ret
+        })
         .collect::<Vec<_>>();
     //  Due to rounding errors, we may have to adjust the scaled probabilities a bit so they sum to L.
     //  Adjusting the last prob is the easiest way to do this, although it's likely not very accurate.
@@ -58,7 +65,7 @@ fn main() {
     println!("Cumulative scaled symbol probabilities: {:?}", cumulative_scaled_symbol_probabilities);
 
     // Renormalization range
-    println!("I = [{}, {}]", L, L * 2 - 1);
+    println!("Renormalization range (I) = [{}, {}]", L, L * 2 - 1);
 
     // Precursor ranges
     let symbol_precursor_ranges =
@@ -66,9 +73,9 @@ fn main() {
         .map(|p| (*p, *p * 2 - 1))
         .collect::<Vec<_>>();
 
-    println!("Symbol precursor ranges (inclusive): {:?}", symbol_precursor_ranges);
+    println!("Symbol precursor ranges (Is, inclusive): {:?}", symbol_precursor_ranges);
 
-    // Sorted symbols (the simplest/most naive construction, not necessarily worst)
+    // Sorted symbols (the simplest/most naive construction, not necessarily worst, but likely to be due to precision loss)
     let sorted_symbols =
         scaled_symbol_probabilities.iter()
         .enumerate()
@@ -82,7 +89,7 @@ fn main() {
 
     println!("State count: {}", STATE_COUNT);
 
-    // Encoding/decoding table/string (the simplest/most naive construction, not necessarily worst)
+    // Encoding/decoding table/string (the simplest/most naive construction as sparse 2D arrays, basically the worst possible option but most intuitive)
     let mut encoding_table = vec![0; (STATE_COUNT * ALPHABET_SIZE) as usize];
     let mut decoding_table = vec![(0, 0); STATE_COUNT as usize];
 
@@ -108,11 +115,9 @@ fn main() {
     // Encoding
     let mut encoded_string = Vec::new(); // Note that this is LIFO, not FIFO
 
-    let initial_state = L;
+    let mut state = L;
 
-    println!("Initial state: {}", initial_state);
-
-    let mut state = initial_state;
+    println!("Initial encoding state (x): {}", state);
 
     for symbol in input.iter().rev() { // Encode in reverse order
         // Input symbol
@@ -134,7 +139,7 @@ fn main() {
 
     let final_state = state;
 
-    println!("Final state: {}", final_state);
+    println!("Final encoding state (x'): {}", final_state);
     println!("Encoded string: {:?} ({} bits)", encoded_string, encoded_string.len());
 
     // Decoding
@@ -142,26 +147,28 @@ fn main() {
 
     let mut state = final_state;
 
+    println!("Initial decoding state (x): {}", state);
+
     for _ in 0..input.len() {
+        // Look up symbol and next state base in table
+        let (symbol, next_state_base) = decoding_table[state as usize];
+
+        // Output symbol
+        decoded_string.push(symbol);
+
+        // Update state
+        state = next_state_base;
+
         // Pull in bits until state is in renormalization range (Is -> I, should mirror encoding output bits to move from I -> Is)
         while state < L {
             let input_bit = encoded_string.pop().unwrap();
             state <<= 1;
             state |= input_bit;
         }
-
-        // Look up symbol and next state in table
-        let (symbol, next_state) = decoding_table[state as usize];
-
-        // Output symbol
-        decoded_string.push(symbol);
-
-        // Update state
-        state = next_state;
     }
 
     let final_state = state;
 
-    println!("Final state: {}", final_state);
+    println!("Final decoding state (x'): {}", final_state);
     println!("Decoded string: {:?} ({} bits)", decoded_string, decoded_string.len());
 }
