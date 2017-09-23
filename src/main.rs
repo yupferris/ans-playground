@@ -1,3 +1,5 @@
+use std::iter;
+
 fn main() {
     // Input symbols
     const ALPHABET_SIZE: u32 = 2; // Only bits for now
@@ -7,44 +9,73 @@ fn main() {
     println!("Input string: {:?} ({} bits)", input, input.len());
 
     // Symbol frequencies
-    let f0 = input.iter().fold(0, |acc, x| acc + (1 - *x));
-    let f1 = input.iter().fold(0, |acc, x| acc + *x);
+    let symbol_frequencies =
+        (0..ALPHABET_SIZE)
+        .map(|s| input.iter().fold(0, |acc, x| if *x == s { acc + 1 } else { acc }))
+        .collect::<Vec<_>>();
 
-    println!("f0: {}", f0);
-    println!("f1: {}", f1);
+    println!("Symbol frequencies: {:?}", symbol_frequencies);
 
     // Symbol probabilities (approx.)
-    let p0 = (f0 as f64) / (input.len() as f64);
-    let p1 = (f1 as f64) / (input.len() as f64);
+    let symbol_probabilities =
+        symbol_frequencies.iter()
+        .map(|f| (*f as f64) / (input.len() as f64))
+        .collect::<Vec<_>>();
 
-    println!("p0: ~{}", p0);
-    println!("p1: ~{}", p1);
+    println!("Symbol probabilities: {:?}", symbol_probabilities);
 
-    // Scaled probability sum (determines # of states, coding precision).
+    // Scaled probability sum (determines # of states, coding precision)
     const L: u32 = 16;
 
     println!("L: {}", L);
 
     // Scaled integer probabilities (must sum to L)
-    let f0_scaled = ((L as f64) * p0).round() as u32;
-    let f1_scaled = L - f0_scaled;
+    let mut scaled_symbol_probabilities =
+        symbol_probabilities.iter()
+        .map(|p| (*p * (L as f64)).floor() as u32)
+        .collect::<Vec<_>>();
+    //  Due to rounding errors, we may have to adjust the scaled probabilities a bit so they sum to L.
+    //  Adjusting the last prob is the easiest way to do this, although it's likely not very accurate.
+    while scaled_symbol_probabilities.iter().fold(0, |acc, x| acc + *x) < L {
+        let i = scaled_symbol_probabilities.len() - 1;
+        scaled_symbol_probabilities[i] += 1;
+    }
 
-    println!("f0 scaled: {}", f0_scaled);
-    println!("f1 scaled: {}", f1_scaled);
+    println!("Scaled symbol probabilities: {:?}", scaled_symbol_probabilities);
 
-    // Cumulative freq's (trivial in this case, but written out for practice)
-    let b0 = 0;
-    let b1 = f0_scaled;
+    // Cumulative scaled probalities
+    let cumulative_scaled_symbol_probabilities =
+        scaled_symbol_probabilities.iter()
+        .scan(0, |acc, x| {
+            let ret = *acc;
 
-    println!("b0: {}", b0);
-    println!("b1: {}", b1);
+            *acc += *x;
+
+            Some(ret)
+        })
+        .collect::<Vec<_>>();
+
+    println!("Cumulative scaled symbol probabilities: {:?}", cumulative_scaled_symbol_probabilities);
 
     // Renormalization range
     println!("I = [{}, {}]", L, L * 2 - 1);
 
     // Precursor ranges
-    println!("I0 = [{}, {}]", f0_scaled, f0_scaled * 2 - 1);
-    println!("I1 = [{}, {}]", f1_scaled, f1_scaled * 2 - 1);
+    let symbol_precursor_ranges =
+        scaled_symbol_probabilities.iter()
+        .map(|p| (*p, *p * 2 - 1))
+        .collect::<Vec<_>>();
+
+    println!("Symbol precursor ranges (inclusive): {:?}", symbol_precursor_ranges);
+
+    // Sorted symbols (the simplest/most naive construction, not necessarily worst)
+    let sorted_symbols =
+        scaled_symbol_probabilities.iter()
+        .enumerate()
+        .flat_map(|(s, p)| iter::repeat(s as u32).take(*p as _))
+        .collect::<Vec<_>>();
+
+    println!("Sorted symbols: {}", sorted_symbols.iter().fold(String::new(), |acc, x| format!("{}{}", acc, *x)));
 
     // State count
     const STATE_COUNT: u32 = L * 2;
@@ -54,39 +85,30 @@ fn main() {
     // Encoding/decoding table/string (the simplest/most naive construction, not necessarily worst)
     let mut encoding_table = vec![0; (STATE_COUNT * ALPHABET_SIZE) as usize];
     let mut decoding_table = vec![(0, 0); STATE_COUNT as usize];
-    let mut encoding_string = Vec::new();
 
-    let mut max_state_0 = f0_scaled - 1; // - 1 because we want this to be an inclusive upper bound, and we'll increment it before use during table construction
-    let mut max_state_1 = f1_scaled - 1;
+    let mut symbol_max_states =
+        scaled_symbol_probabilities.iter()
+        .map(|p| *p - 1) // - 1 because we want this to be an inclusive upper bound
+        .collect::<Vec<_>>();
 
     for to_state in L..L * 2 {
-        let symbol = if to_state - L < b1 { 0 } else { 1 };
-        let from_state = match symbol {
-            0 => {
-                max_state_0 += 1;
-                max_state_0
-            }
-            _ => {
-                max_state_1 += 1;
-                max_state_1
-            }
-        };
+        let symbol = sorted_symbols[(to_state - L) as usize];
+
+        symbol_max_states[symbol as usize] += 1;
+        let from_state = symbol_max_states[symbol as usize];
 
         encoding_table[(from_state * ALPHABET_SIZE + symbol) as usize] = to_state;
 
         decoding_table[to_state as usize] = (symbol, from_state);
-
-        encoding_string.push(symbol);
     }
 
     println!("Encoding table: {:?}", encoding_table);
     println!("Decoding table: {:?}", decoding_table);
-    println!("Encoding string: {}", encoding_string.into_iter().fold(String::new(), |acc, x| format!("{}{}", acc, x)));
 
     // Encoding
     let mut encoded_string = Vec::new(); // Note that this is LIFO, not FIFO
 
-    let initial_state = L; // TODO: Is this general?
+    let initial_state = L;
 
     println!("Initial state: {}", initial_state);
 
@@ -97,10 +119,7 @@ fn main() {
         let symbol = *symbol;
 
         // Stream out bits from state until we're in the current symbol's precursor range (I -> Is)
-        let precursor_range_end = match symbol {
-            0 => max_state_0,
-            _ => max_state_1,
-        };
+        let precursor_range_end = symbol_precursor_ranges[symbol as usize].1;
 
         while state > precursor_range_end {
             let output_bit = state & 0x01;
@@ -131,7 +150,7 @@ fn main() {
             state |= input_bit;
         }
 
-        // Look up symbol and next state base in table
+        // Look up symbol and next state in table
         let (symbol, next_state) = decoding_table[state as usize];
 
         // Output symbol
