@@ -25,9 +25,16 @@ fn main() {
     println!("Symbol probabilities: {:?}", symbol_probabilities);
 
     // Scaled probability sum (determines # of states, coding precision)
-    const L: u32 = 16;
+    const M: u32 = 16;
+
+    println!("M: {}", M);
+
+    // Renormalization range
+    const K: u32 = 1; // Scaling factor (grows # of states, coding precision by a constant factor)
+    const L: u32 = M * K;
 
     println!("L: {}", L);
+    println!("Renormalization range (I) = [{}, {}]", L, L * 2 - 1);
 
     // Scaled integer probabilities (must sum to L)
     //  Note that in very extreme cases (eg. a symbol has ~0 probability) this algorithm might fail. :)
@@ -63,9 +70,6 @@ fn main() {
         .collect::<Vec<_>>();
 
     println!("Cumulative scaled symbol probabilities: {:?}", cumulative_scaled_symbol_probabilities);
-
-    // Renormalization range
-    println!("Renormalization range (I) = [{}, {}]", L, L * 2 - 1);
 
     // Precursor ranges
     let symbol_precursor_ranges =
