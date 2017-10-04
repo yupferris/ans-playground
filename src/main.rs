@@ -33,6 +33,7 @@ fn main() {
     const K: u32 = 1; // Scaling factor (grows # of states, coding precision by a constant factor)
     const L: u32 = M * K;
 
+    println!("K: {}", K);
     println!("L: {}", L);
     println!("Renormalization range (I) = [{}, {}]", L, L * 2 - 1);
 
