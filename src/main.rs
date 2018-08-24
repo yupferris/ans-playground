@@ -1,12 +1,23 @@
+use std::env::args;
+use std::fs::File;
+use std::io::Read;
 use std::iter;
 
 fn main() {
+    let input_file_name = args().nth(1).expect("Couldn't read input file name arg");
+
     // Input symbols
-    const ALPHABET_SIZE: u32 = 2; // Only bits for now
-    let input = vec![0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // Unpacked, raw symbols
+    const ALPHABET_SIZE: u32 = 256; // Only bits for now
+    //let input = vec![0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // Unpacked, raw symbols
+    let input = {
+        let mut file = File::open(input_file_name).expect("Couldn't open input file");
+        let mut ret = Vec::new();
+        file.read_to_end(&mut ret).expect("Couldn't read input file bytes");
+        ret.into_iter().map(|x| x as u32).collect::<Vec<_>>()
+    };
 
     println!("Alphabet size: {}", ALPHABET_SIZE);
-    println!("Input string: {:?} ({} bits)", input, input.len());
+    //println!("Input string: {:?} ({} bits)", input, input.len() * 8);
 
     // Symbol frequencies
     let symbol_frequencies =
@@ -25,7 +36,7 @@ fn main() {
     println!("Symbol probabilities: {:?}", symbol_probabilities);
 
     // Scaled probability sum (determines # of states, coding precision)
-    const M: u32 = 16;
+    const M: u32 = 4096;
 
     println!("M: {}", M);
 
@@ -56,7 +67,7 @@ fn main() {
         scaled_symbol_probabilities[i] += 1;
     }
 
-    println!("Scaled symbol probabilities: {:?}", scaled_symbol_probabilities);
+    //println!("Scaled symbol probabilities: {:?}", scaled_symbol_probabilities);
 
     // Cumulative scaled probalities
     let cumulative_scaled_symbol_probabilities =
@@ -70,7 +81,7 @@ fn main() {
         })
         .collect::<Vec<_>>();
 
-    println!("Cumulative scaled symbol probabilities: {:?}", cumulative_scaled_symbol_probabilities);
+    //println!("Cumulative scaled symbol probabilities: {:?}", cumulative_scaled_symbol_probabilities);
 
     // Precursor ranges
     let symbol_precursor_ranges =
@@ -78,7 +89,7 @@ fn main() {
         .map(|p| (*p, *p * 2 - 1))
         .collect::<Vec<_>>();
 
-    println!("Symbol precursor ranges (Is, inclusive): {:?}", symbol_precursor_ranges);
+    //println!("Symbol precursor ranges (Is, inclusive): {:?}", symbol_precursor_ranges);
 
     // Sorted symbols (the simplest/most naive construction, not necessarily worst, but likely to be due to precision loss)
     let sorted_symbols =
@@ -87,7 +98,7 @@ fn main() {
         .flat_map(|(s, p)| iter::repeat(s as u32).take(*p as _))
         .collect::<Vec<_>>();
 
-    println!("Sorted symbols: {}", sorted_symbols.iter().fold(String::new(), |acc, x| format!("{}{}", acc, *x)));
+    //println!("Sorted symbols: {}", sorted_symbols.iter().fold(String::new(), |acc, x| format!("{}{}", acc, *x)));
 
     // State count
     const STATE_COUNT: u32 = L * 2;
@@ -114,8 +125,8 @@ fn main() {
         decoding_table[to_state as usize] = (symbol, from_state);
     }
 
-    println!("Encoding table: {:?}", encoding_table);
-    println!("Decoding table: {:?}", decoding_table);
+    //println!("Encoding table: {:?}", encoding_table);
+    //println!("Decoding table: {:?}", decoding_table);
 
     // Encoding
     let mut encoded_string = Vec::new(); // Note that this is LIFO, not FIFO
@@ -145,7 +156,8 @@ fn main() {
     let final_state = state;
 
     println!("Final encoding state (x'): {}", final_state);
-    println!("Encoded string: {:?} ({} bits)", encoded_string, encoded_string.len());
+    //println!("Encoded string: {:?} ({} bits)", encoded_string, encoded_string.len());
+    println!("Encoded string size: {} bits", encoded_string.len());
 
     // Decoding
     let mut decoded_string = Vec::new();
@@ -175,5 +187,12 @@ fn main() {
     let final_state = state;
 
     println!("Final decoding state (x'): {}", final_state);
-    println!("Decoded string: {:?} ({} bits)", decoded_string, decoded_string.len());
+    //println!("Decoded string: {:?} ({} bits)", decoded_string, decoded_string.len() * 8);
+    println!("Decoded string size: {} bits", decoded_string.len() * 8);
+
+    if decoded_string == input {
+        println!("Input/output match!");
+    } else {
+        println!("Input/output don't match :(");
+    }
 }
