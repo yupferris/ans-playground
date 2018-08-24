@@ -48,7 +48,7 @@ impl Context {
                     acc
                 } else {
                     let adjusted_x = *x - 1;
-                    let adjust_error = ((*x as f64) / (adjusted_x as f64)).log2();
+                    let adjust_error = ((*x as f64) / (adjusted_x as f64)).log2() * (symbol_probabilities[index] as f64);
                     match acc {
                         Some(acc) => {
                             if adjust_error < acc.1 {
