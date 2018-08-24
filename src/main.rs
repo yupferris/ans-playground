@@ -87,12 +87,13 @@ impl Context {
             let mut target_index = 0;
             for (symbol, probability) in scaled_symbol_probabilities.iter().enumerate() {
                 for _ in 0..*probability {
-                    while ret[target_index as usize] != UNALLOCATED {
-                        target_index = (target_index + 1) & (L - 1);
+                    let mut temp_target_index = target_index;
+                    while ret[temp_target_index as usize] != UNALLOCATED {
+                        temp_target_index = (temp_target_index + 1) & (L - 1);
                     }
+                    ret[temp_target_index as usize] = symbol as _;
 
-                    ret[target_index as usize] = symbol as _;
-                    target_index = (target_index + 37) & (L - 1);
+                    target_index = (target_index + 49) & (L - 1);
                 }
             }
             ret
