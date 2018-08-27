@@ -22,8 +22,8 @@ struct Context {
 }
 
 impl Context {
-    fn new(symbol_frequencies: &[u32]) -> Context {
-        println!("Symbol frequencies: {:?}", symbol_frequencies);
+    fn new(symbol_frequencies: &[u32], state_index_start: Option<u32>, state_index_step: Option<u32>) -> Context {
+        //println!("Symbol frequencies: {:?}", symbol_frequencies);
 
         let total_symbols = symbol_frequencies.iter().fold(0, |acc, x| acc + x);
 
@@ -64,7 +64,7 @@ impl Context {
             scaled_symbol_probabilities[adjust_index] -= 1;
         }
 
-        println!("Scaled symbol probabilities: {:?}", scaled_symbol_probabilities);
+        //println!("Scaled symbol probabilities: {:?}", scaled_symbol_probabilities);
 
         // Precursor ranges
         let symbol_precursor_ranges =
@@ -84,7 +84,7 @@ impl Context {
         let sorted_symbols = {
             const UNALLOCATED: u32 = ALPHABET_SIZE;
             let mut ret = vec![UNALLOCATED; L as usize];
-            let mut target_index = 0;
+            let mut target_index = state_index_start.unwrap_or(0);
             for (symbol, probability) in scaled_symbol_probabilities.iter().enumerate() {
                 for _ in 0..*probability {
                     let mut temp_target_index = target_index;
@@ -93,13 +93,13 @@ impl Context {
                     }
                     ret[temp_target_index as usize] = symbol as _;
 
-                    target_index = (target_index + 49) & (L - 1);
+                    target_index = (target_index + state_index_step.unwrap_or(49)) & (L - 1);
                 }
             }
             ret
         };
 
-        println!("Sorted symbols: {}", sorted_symbols.iter().fold(String::new(), |acc, x| format!("{}{:1x}", acc, *x)));
+        //println!("Sorted symbols: {}", sorted_symbols.iter().fold(String::new(), |acc, x| format!("{}{:1x}", acc, *x)));
 
         // Encoding/decoding table/string (the simplest/most naive construction as sparse 2D arrays, basically the worst possible option but most intuitive)
         let mut encoding_table = vec![0; (STATE_COUNT * ALPHABET_SIZE) as usize];
@@ -169,63 +169,84 @@ fn main() {
         second_nybble_symbol_frequencies[first_nybble as usize][second_nybble as usize] += 1;
     }
 
-    let first_nybble_context = Context::new(&first_nybble_symbol_frequencies);
-    let second_nybble_contexts = second_nybble_symbol_frequencies.iter().map(|f| Context::new(f)).collect::<Vec<_>>();
+    let mut best_size_bits = None;
 
-    // Encoding
-    let mut encoded_string = Vec::new(); // Note that this is LIFO, not FIFO
+    for state_index_start in 0..128 {
+        for state_index_step in 0..128 {
+            let first_nybble_context = Context::new(&first_nybble_symbol_frequencies, Some(state_index_start), Some(state_index_step));
+            let second_nybble_contexts = second_nybble_symbol_frequencies.iter().map(|f| Context::new(f, Some(state_index_start), Some(state_index_step))).collect::<Vec<_>>();
 
-    let mut state = L;
+            // Encoding
+            let mut encoded_string = Vec::new(); // Note that this is LIFO, not FIFO
 
-    println!("Initial encoding state (x): {}", state);
+            let mut state = L;
 
-    for symbol in input.iter().rev() { // Encode in reverse order
-        // Input symbol
-        let symbol = *symbol;
+            //println!("Initial encoding state (x): {}", state);
 
-        let first_nybble = symbol >> 4;
-        let second_nybble = symbol & 0x0f;
+            for symbol in input.iter().rev() { // Encode in reverse order
+                // Input symbol
+                let symbol = *symbol;
 
-        state = encode(second_nybble, state, &second_nybble_contexts[first_nybble as usize], &mut encoded_string);
-        state = encode(first_nybble, state, &first_nybble_context, &mut encoded_string);
-    }
+                let first_nybble = symbol >> 4;
+                let second_nybble = symbol & 0x0f;
 
-    let final_state = state;
+                state = encode(second_nybble, state, &second_nybble_contexts[first_nybble as usize], &mut encoded_string);
+                state = encode(first_nybble, state, &first_nybble_context, &mut encoded_string);
+            }
 
-    println!("Final encoding state (x'): {}", final_state);
-    //println!("Encoded string: {:?} ({} bits)", encoded_string, encoded_string.len());
-    let ratio = (1.0 - (encoded_string.len() as f64) / ((input.len() * 8) as f64)) * 100.0;
-    println!("Encoded string size: {} bits (~{} bytes, {:.*}%)", encoded_string.len(), encoded_string.len() / 8, 2, ratio);
+            let final_state = state;
 
-    // Decoding
-    let mut decoded_string = Vec::new();
+            //println!("Final encoding state (x'): {}", final_state);
+            //println!("Encoded string: {:?} ({} bits)", encoded_string, encoded_string.len());
+            let ratio = (1.0 - (encoded_string.len() as f64) / ((input.len() * 8) as f64)) * 100.0;
+            best_size_bits = match best_size_bits {
+                Some(current_best_size_bits) => {
+                    if encoded_string.len() < current_best_size_bits {
+                        println!("New best: {} bits (~{} bytes), start: {}, step {}", encoded_string.len(), encoded_string.len() / 8, state_index_start, state_index_step);
+                        println!("Encoded string size: {} bits (~{} bytes, {:.*}%)", encoded_string.len(), encoded_string.len() / 8, 2, ratio);
+                        Some(encoded_string.len())
+                    } else {
+                        Some(current_best_size_bits)
+                    }
+                }
+                _ => {
+                    println!("New best: {} bits (~{} bytes), start: {}, step {}", encoded_string.len(), encoded_string.len() / 8, state_index_start, state_index_step);
+                    println!("Encoded string size: {} bits (~{} bytes, {:.*}%)", encoded_string.len(), encoded_string.len() / 8, 2, ratio);
+                    Some(encoded_string.len())
+                }
+            };
 
-    let mut state = final_state;
+            // Decoding
+            let mut decoded_string = Vec::new();
 
-    println!("Initial decoding state (x): {}", state);
+            let mut state = final_state;
 
-    for _ in 0..input.len() {
-        let (first_nybble, new_state) = decode(state, &first_nybble_context, &mut encoded_string);
-        state = new_state;
-        let (second_nybble, new_state) = decode(state, &second_nybble_contexts[first_nybble as usize], &mut encoded_string);
-        state = new_state;
+            //println!("Initial decoding state (x): {}", state);
 
-        let symbol = (first_nybble << 4) | second_nybble;
+            for _ in 0..input.len() {
+                let (first_nybble, new_state) = decode(state, &first_nybble_context, &mut encoded_string);
+                state = new_state;
+                let (second_nybble, new_state) = decode(state, &second_nybble_contexts[first_nybble as usize], &mut encoded_string);
+                state = new_state;
 
-        // Output symbol
-        decoded_string.push(symbol);
-    }
+                let symbol = (first_nybble << 4) | second_nybble;
 
-    let final_state = state;
+                // Output symbol
+                decoded_string.push(symbol);
+            }
 
-    println!("Final decoding state (x'): {}", final_state);
-    //println!("Decoded string: {:?} ({} bits)", decoded_string, decoded_string.len() * 8);
-    println!("Decoded string size: {} bits ({} bytes)", decoded_string.len() * 8, decoded_string.len());
+            let final_state = state;
 
-    if decoded_string == input {
-        println!("Input/output match!");
-    } else {
-        println!("Input/output don't match :(");
+            //println!("Final decoding state (x'): {}", final_state);
+            //println!("Decoded string: {:?} ({} bits)", decoded_string, decoded_string.len() * 8);
+            //println!("Decoded string size: {} bits ({} bytes)", decoded_string.len() * 8, decoded_string.len());
+
+            if decoded_string == input {
+                //println!("Input/output match!");
+            } else {
+                println!("Input/output don't match :(");
+            }
+        }
     }
 }
 
