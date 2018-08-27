@@ -82,16 +82,11 @@ impl Context {
             .collect::<Vec<_>>();*/
 
         let sorted_symbols = {
-            const UNALLOCATED: u32 = ALPHABET_SIZE;
-            let mut ret = vec![UNALLOCATED; L as usize];
+            let mut ret = vec![0; L as usize];
             let mut target_index = state_index_start.unwrap_or(0);
             for (symbol, probability) in scaled_symbol_probabilities.iter().enumerate() {
                 for _ in 0..*probability {
-                    let mut temp_target_index = target_index;
-                    while ret[temp_target_index as usize] != UNALLOCATED {
-                        temp_target_index = (temp_target_index + 1) & (L - 1);
-                    }
-                    ret[temp_target_index as usize] = symbol as _;
+                    ret[target_index as usize] = symbol as _;
 
                     target_index = (target_index + state_index_step.unwrap_or(49)) & (L - 1);
                 }
@@ -172,7 +167,8 @@ fn main() {
     let mut best_size_bits = None;
 
     for state_index_start in 0..128 {
-        for state_index_step in 0..128 {
+        let mut state_index_step = 1;
+        while state_index_step < 128 {
             let first_nybble_context = Context::new(&first_nybble_symbol_frequencies, Some(state_index_start), Some(state_index_step));
             let second_nybble_contexts = second_nybble_symbol_frequencies.iter().map(|f| Context::new(f, Some(state_index_start), Some(state_index_step))).collect::<Vec<_>>();
 
@@ -246,6 +242,8 @@ fn main() {
             } else {
                 println!("Input/output don't match :(");
             }
+
+            state_index_step += 2;
         }
     }
 }
